@@ -1,4 +1,4 @@
-import os, tempfile, unittest
+import os, subprocess, tempfile, unittest
 from unittest.mock import patch
 os.environ['MMC_HOME'] = tempfile.mkdtemp()
 import agent, config, discover, probe
@@ -38,6 +38,17 @@ class ProbeTest(unittest.TestCase):
         import peek_agent
         self.assertEqual(peek_agent.clean('\x1b[31mok\x1b[0m token=abcdef123456 ghp_' + 'a' * 30), ['ok [masked] [masked]'])
         with self.assertRaises(ValueError): probe.peek({'name': 'a', 'address': 'local'}, None, 'a;b')
+
+class ExplainTest(unittest.TestCase):
+    def test_reasons_are_fixed_text(self):
+        host = {'name': 'a', 'address': '10.0.0.2', 'user': 'umbrel'}
+        error = subprocess.CalledProcessError(255, 'ssh', stderr='umbrel@10.0.0.2: Permission denied (publickey).')
+        self.assertIn('SSH login refused for umbrel@10.0.0.2', probe.explain(host, error))
+        self.assertEqual(probe.explain(host, subprocess.TimeoutExpired('ssh', 5)), 'Timed out reaching the host')
+        self.assertNotIn('secret', probe.explain(host, subprocess.CalledProcessError(1, 'x', stderr='secret path /etc')))
+    def test_unavailable_host_carries_a_reason(self):
+        result = probe.probe({'name': 'x', 'address': 'no-such-host.invalid', 'user': 'u'})
+        self.assertEqual(result['status'], 'unavailable'); self.assertTrue(result['reason'])
 
 class DiscoverTest(unittest.TestCase):
     @patch('discover.subprocess.run')

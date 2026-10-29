@@ -353,7 +353,7 @@ export function outerModel(data, stale, now = Date.now() / 1000, maxBodies = 12)
       row: {id: 'process:' + item.host + ':' + p.pid, name: p.runtime + ' process #' + p.pid, source: 'Process', status: 'Process present', host: item.host,
         target: p.cwd || '', updated: item.processes.observedAt},
       kind: 'process', color: RUNTIME_COLORS[p.runtime] || 0x62cfe6, size: .11, ring: 0, moons: [], moonTotal: 0}));
-    return {name: item.host, outer: true, mode: stale ? 'stale' : fresh ? 'idle' : 'unknown', gauges, bodies, lease: null, scale: OUTER_SCALE,
+    return {name: item.host, outer: true, reason: item.status === 'ok' ? '' : String(item.reason || '').slice(0, 200), mode: stale ? 'stale' : fresh ? 'idle' : 'unknown', gauges, bodies, lease: null, scale: OUTER_SCALE,
       counts: {active: 0, flagged: 0, claude: 0, files: 0, moons: 0, satellites: found.length, extra: Math.max(0, found.length - bodies.length),
         processes: item.processes && item.processes.status === 'ok' ? found.length : null, byRuntime: item.processes && item.processes.counts || {}}};
   });

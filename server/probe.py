@@ -39,6 +39,20 @@ def _processes(items):
     return isinstance(items, list) and all(isinstance(x, dict) and x.get('runtime') in agent.RUNTIMES and type(x.get('pid')) is int and x['pid'] > 0
         and ('cwd' not in x or (isinstance(x['cwd'], str) and x['cwd'].startswith('/') and len(x['cwd']) <= 4096)) for x in items)
 
+def explain(host, error):
+    """A short, fixed-text reason a host could not be read; raw ssh output is never passed on."""
+    if isinstance(error, subprocess.TimeoutExpired): return 'Timed out reaching the host'
+    text = (getattr(error, 'stderr', '') or '').lower()
+    who = (host['user'] + '@' if host.get('user') else '') + host['address']
+    if 'host key verification failed' in text or 'identification has changed' in text: return 'Host key changed; check it, then remove its line from known_hosts'
+    if 'permission denied' in text: return 'SSH login refused for ' + who + '. Set the right SSH user or authorize the bridge key (ssh-copy-id)'
+    if 'connection refused' in text: return 'Nothing is listening for SSH on ' + host['address']
+    if 'could not resolve' in text or 'no route' in text or 'unreachable' in text: return 'Host not reachable at ' + host['address']
+    if 'timed out' in text: return 'Timed out reaching ' + host['address']
+    if 'not found' in text and 'python' in text: return 'python3 is not installed on the host'
+    if isinstance(error, (ValueError, TypeError, KeyError, IndexError)): return 'The host answered with something unexpected'
+    return 'Could not run the check on the host'
+
 def probe(host):
     now = time.time()
     try:
@@ -48,8 +62,8 @@ def probe(host):
         if not (_count_map(presence['counts']) and _processes(presence['processes'])): raise ValueError('Invalid process details')
         return {'host': host['name'], 'status': 'ok', 'observedAt': now, **resources,
                 'processes': {'status': 'ok', 'counts': presence['counts'], 'processes': presence['processes'], 'observedAt': now}}
-    except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError, IndexError):
-        return {'host': host['name'], 'status': 'unavailable', 'observedAt': now, 'processes': {'status': 'unavailable', 'counts': {}, 'observedAt': now}}
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError, IndexError) as error:
+        return {'host': host['name'], 'status': 'unavailable', 'reason': explain(host, error), 'observedAt': now, 'processes': {'status': 'unavailable', 'counts': {}, 'observedAt': now}}
 
 def collect(hosts):
     if not hosts: return []
