@@ -1,0 +1,7 @@
+{
+  "hosts": [
+    {"name": "this-machine", "address": "local"},
+    {"name": "workstation", "address": "192.168.1.20", "user": "me"},
+    {"name": "mac-mini", "address": "100.64.0.7", "user": "me", "port": 22, "key": "/home/me/.ssh/id_ed25519"}
+  ]
+}

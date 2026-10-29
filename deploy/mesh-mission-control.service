@@ -1,0 +1,11 @@
+# systemctl --user enable --now mesh-mission-control   (copy to ~/.config/systemd/user/)
+[Unit]
+Description=Mesh Mission Control bridge
+After=network-online.target
+[Service]
+ExecStart=/usr/bin/python3 %h/mesh-mission-control/server/mmc.py serve
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+[Install]
+WantedBy=default.target

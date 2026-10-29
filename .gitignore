@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.keystore
+*.apk
+build/
+android/build/
+__pycache__/
