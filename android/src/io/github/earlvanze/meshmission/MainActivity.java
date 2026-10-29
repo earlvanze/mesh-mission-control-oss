@@ -58,8 +58,24 @@ public class MainActivity extends Activity {
     view.setWebViewClient(new WebViewClient() {
       @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { return true; }
     });
-    setContentView(view);
+    edgeInsets();
     view.loadUrl("file:///android_asset/index.html");
+  }
+
+  /** Targeting Android 15 draws under the status bar and cutouts; pad the page so the header clears them. */
+  @SuppressWarnings("deprecation")
+  private void edgeInsets() {
+    android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
+    frame.setBackgroundColor(0xFF090F18);
+    frame.addView(view, new android.widget.FrameLayout.LayoutParams(-1, -1));
+    setContentView(frame);
+    frame.setOnApplyWindowInsetsListener((v, insets) -> {
+      int top = insets.getSystemWindowInsetTop();
+      if (android.os.Build.VERSION.SDK_INT >= 28 && insets.getDisplayCutout() != null) top = Math.max(top, insets.getDisplayCutout().getSafeInsetTop());
+      v.setPadding(insets.getSystemWindowInsetLeft(), top, insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
+      return insets;
+    });
+    frame.requestApplyInsets();
   }
 
   @Override protected void onResume() {

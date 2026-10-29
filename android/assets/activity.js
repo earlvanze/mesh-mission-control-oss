@@ -344,7 +344,12 @@ export function outerModel(data, stale, now = Date.now() / 1000, maxBodies = 12)
     const gauges = resourceGauges(item, now);
     const fresh = item.status === 'ok' && Number.isFinite(item.observedAt) && now - item.observedAt <= RESOURCE_MAX_AGE;
     const found = item.processes && item.processes.status === 'ok' && Array.isArray(item.processes.processes) ? item.processes.processes : [];
-    const bodies = found.slice(0, maxBodies).map(p => ({
+    // Interleave tools so a crowd of one tool cannot hide the others behind the moon cap.
+    const groups = new Map();
+    for (const p of found) { if (!groups.has(p.runtime)) groups.set(p.runtime, []); groups.get(p.runtime).push(p); }
+    const mixed = [];
+    for (let i = 0; mixed.length < found.length; i++) for (const list of groups.values()) if (i < list.length) mixed.push(list[i]);
+    const bodies = mixed.slice(0, maxBodies).map(p => ({
       row: {id: 'process:' + item.host + ':' + p.pid, name: p.runtime + ' process #' + p.pid, source: 'Process', status: 'Process present', host: item.host,
         target: p.cwd || '', updated: item.processes.observedAt},
       kind: 'process', color: RUNTIME_COLORS[p.runtime] || 0x62cfe6, size: .11, ring: 0, moons: [], moonTotal: 0}));

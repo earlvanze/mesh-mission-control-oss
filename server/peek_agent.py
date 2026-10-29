@@ -1,9 +1,10 @@
-"""Self-contained, read-only tail of one terminal, run on the host that owns it.
+"""Self-contained, read-only tail of one agent's recent output, run on the host that owns it.
 
-The caller prefixes `PID = <int or None>` and `PANE = <str or None>`. Readable terminals are tmux panes
-(found by walking from the process up to a pane's shell) and Herdr panes. A process whose terminal is
-neither is reported as unreadable; nothing else is opened. Output is the last lines only, with escape
-sequences removed and common credential shapes masked.
+The caller prefixes `PID = <int or None>` and `PANE = <str or None>`. In order: a Herdr pane, a tmux pane
+(found by walking from the process up to a pane's shell), then the Codex or Claude Code session transcript
+that process has open or, for Claude, that belongs to its working directory. Anything else is reported as
+unreadable; no other file is opened. Output is the last lines only, with escape sequences removed and
+common credential shapes masked.
 """
 import glob, json, os, re, shutil, subprocess
 
@@ -56,6 +57,76 @@ def herdr_read(pane):
     try: return clean(run([herdr, 'pane', 'read', pane, '--lines', str(LINES * 3), '--format', 'text'], 8))
     except (OSError, subprocess.SubprocessError): return None
 
+def descendants(pid):
+    kids, chain = {}, [pid]
+    try:
+        for line in run(['ps', '-A', '-o', 'pid=', '-o', 'ppid=']).splitlines():
+            a, b = line.split()[:2]
+            kids.setdefault(int(b), []).append(int(a))
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError): return chain
+    for p in chain:
+        chain += [k for k in kids.get(p, []) if k not in chain][:50]
+        if len(chain) > 200: break
+    return chain
+
+def transcript_path(pid):
+    home = os.path.expanduser('~')
+    roots = (home + '/.codex/sessions/', home + '/.claude/projects/')
+    for p in descendants(pid):
+        try: fds = os.listdir('/proc/%d/fd' % p)
+        except OSError: continue
+        for fd in fds:
+            try: path = os.readlink('/proc/%d/fd/%s' % (p, fd))
+            except OSError: continue
+            if path.endswith('.jsonl') and path.startswith(roots): return path
+    try: cwd = os.readlink('/proc/%d/cwd' % pid)
+    except OSError:
+        try:
+            out = run(['/usr/sbin/lsof', '-nP', '-a', '-p', str(pid), '-d', 'cwd', '-Fn'])
+            cwd = next(l[1:] for l in out.splitlines() if l.startswith('n/'))
+        except (OSError, subprocess.SubprocessError, StopIteration): return None
+    folder = os.path.join(home, '.claude/projects', re.sub(r'[^A-Za-z0-9]', '-', cwd))
+    files = sorted(glob.glob(folder + '/*.jsonl'), key=os.path.getmtime)
+    return files[-1] if files else None
+
+def summarize(value, limit=160):
+    text = ' '.join(str(value).split())
+    return text[:limit] + ('…' if len(text) > limit else '')
+
+def entries(record):
+    """(label, text) pairs from one Codex or Claude Code transcript line."""
+    out = []
+    payload = record.get('payload') if isinstance(record.get('payload'), dict) else {}
+    message = record.get('message') if isinstance(record.get('message'), dict) else payload
+    role = message.get('role') if message.get('type') in (None, 'message') else None
+    if payload.get('type') == 'function_call':
+        return [('tool', payload.get('name', '') + ' ' + summarize(payload.get('arguments', ''), 120))]
+    if role in ('user', 'assistant'):
+        content = message.get('content')
+        for part in ([{'type': 'text', 'text': content}] if isinstance(content, str) else content or []):
+            if not isinstance(part, dict): continue
+            if part.get('type') in ('text', 'input_text', 'output_text') and part.get('text', '').strip():
+                if not part['text'].lstrip().startswith('<'): out.append(('you' if role == 'user' else 'agent', summarize(part['text'], 300)))
+            elif part.get('type') == 'tool_use':
+                args = part.get('input') or {}
+                out.append(('tool', part.get('name', '') + ' ' + summarize(args.get('command') or args.get('file_path') or args.get('pattern') or args.get('description') or '', 120)))
+    return out
+
+def transcript_read(pid):
+    path = transcript_path(pid)
+    if not path: return None
+    try:
+        with open(path, 'rb') as f:
+            f.seek(0, 2); size = f.tell(); f.seek(max(0, size - 400000))
+            raw = f.read().decode('utf-8', 'replace').splitlines()
+    except OSError: return None
+    lines = []
+    for line in raw[1:] if size > 400000 else raw:
+        try: record = json.loads(line)
+        except ValueError: continue
+        if isinstance(record, dict): lines += ['%s: %s' % pair for pair in entries(record)]
+    return clean('\n'.join(lines)) if lines else None
+
 def peek():
     if PANE:
         lines = herdr_read(PANE)
@@ -63,7 +134,9 @@ def peek():
     if PID:
         lines = tmux_read(PID)
         if lines is not None: return {'status': 'ok', 'source': 'tmux', 'lines': lines}
-    return {'status': 'unreadable', 'lines': [], 'reason': 'This terminal is not a tmux or Herdr pane, so its output cannot be read from outside.'}
+        lines = transcript_read(PID)
+        if lines is not None: return {'status': 'ok', 'source': 'transcript', 'lines': lines}
+    return {'status': 'unreadable', 'lines': [], 'reason': 'Not a tmux or Herdr pane, and no Codex or Claude Code transcript was found for it, so its output cannot be read from outside.'}
 
 if __name__ == '__main__':
     print(json.dumps(peek()))
