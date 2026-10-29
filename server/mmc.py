@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Mesh Mission Control: a read-only HTTPS bridge that the Android app (or any client) reads.
 
-  mmc.py serve [--bind 0.0.0.0] [--port 18877] [--allow-peek]
+  mmc.py serve [--bind 0.0.0.0] [--port 18877] [--no-peek]
   mmc.py hosts                       list configured hosts
   mmc.py add NAME ADDRESS [--user U] [--port N] [--key PATH]
   mmc.py remove NAME
@@ -19,7 +19,7 @@ CACHE_SECONDS = 20
 MAX_BODY = 16384
 lock = threading.Lock()
 cache = {'at': 0, 'body': None}
-ALLOW_PEEK = False  # set by --allow-peek: lets the app read the last lines of one terminal on demand
+ALLOW_PEEK = True  # --no-peek turns off reading the last lines of one terminal on demand
 
 def state():
     hosts = config.load_hosts()
@@ -56,7 +56,7 @@ class Handler(BaseHTTPRequestHandler):
                     cache.update(at=time.time(), body=state())
                 return 200, cache['body']
         if method == 'GET' and path == '/api/peek':
-            if not ALLOW_PEEK: return 403, {'error': 'Peek is off. Start the server with --allow-peek.'}
+            if not ALLOW_PEEK: return 403, {'error': 'Peek is off. The server was started with --no-peek.'}
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             host = next((h for h in config.load_hosts() if h['name'] == (q.get('host') or [''])[0]), None)
             pid = (q.get('pid') or [''])[0]
@@ -108,7 +108,7 @@ def print_pairing(port):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='mmc.py', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest='command', required=True)
-    s = sub.add_parser('serve'); s.add_argument('--bind', default='0.0.0.0'); s.add_argument('--port', type=int, default=PORT); s.add_argument('--allow-peek', action='store_true')
+    s = sub.add_parser('serve'); s.add_argument('--bind', default='0.0.0.0'); s.add_argument('--port', type=int, default=PORT); s.add_argument('--no-peek', action='store_true')
     sub.add_parser('hosts')
     a = sub.add_parser('add'); a.add_argument('name'); a.add_argument('address'); a.add_argument('--user'); a.add_argument('--port', type=int); a.add_argument('--key')
     r = sub.add_parser('remove'); r.add_argument('name')
@@ -118,7 +118,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.command == 'serve':
         global ALLOW_PEEK
-        ALLOW_PEEK = args.allow_peek
+        ALLOW_PEEK = not args.no_peek
         serve(args.bind, args.port)
     elif args.command == 'hosts':
         for h in config.load_hosts(): print(h['name'], h['address'], h.get('user', ''), h.get('port', ''), h.get('key', ''))

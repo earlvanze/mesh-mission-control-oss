@@ -50,7 +50,7 @@ Verify a download with `sha256sum -c mesh-mission-control.apk.sha256`. To build 
 
 ## Peek at a terminal
 
-Off by default. Start the bridge with `--allow-peek` and a **Peek** button appears on process cards. It fetches the last 40 lines of that process's terminal, once, when pressed (never polled). Only tmux panes and Herdr panes can be read; anything else is reported as unreadable. Escape sequences are removed and common credential shapes (API keys, bearer tokens, `token=…`) are masked, but terminal output can still contain sensitive text. Nothing is stored.
+On by default. A **Peek** button appears on process cards; start the bridge with `--no-peek` to remove it. It fetches the last 40 lines of that process's terminal, once, when pressed (never polled). Only tmux panes and Herdr panes can be read; anything else is reported as unreadable. Escape sequences are removed and common credential shapes (API keys, bearer tokens, `token=…`) are masked, but terminal output can still contain sensitive text. Nothing is stored.
 
 ## Controls
 
