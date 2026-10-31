@@ -264,5 +264,36 @@ public class MainActivity extends Activity {
         try { deliver(id, 200, new JSONObject().put("servers", found)); } catch (Exception e) { deliver(id, 500, new JSONObject()); }
       }).start();
     }
+
+    /** Vibrate the device to draw attention to an alert. */
+    @android.annotation.SuppressLint("MissingPermission")
+    @JavascriptInterface public void vibrate(long ms) {
+      runOnUiThread(() -> {
+        try {
+          android.os.Vibrator v = (android.os.Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+          if (v != null && v.hasVibrator()) v.vibrate(ms);
+        } catch (Exception e) { }
+      });
+    }
+
+    /** Post a system notification with high importance so it appears as a heads-up alert. */
+    @JavascriptInterface public void notifyAlert(String title, String text) {
+      runOnUiThread(() -> {
+        try {
+          android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+          if (nm == null) return;
+          if (android.os.Build.VERSION.SDK_INT >= 26) {
+            android.app.NotificationChannel ch = new android.app.NotificationChannel("mesh-alert", "Mesh Alerts", android.app.NotificationManager.IMPORTANCE_HIGH);
+            ch.enableVibration(true);
+            ch.setVibrationPattern(new long[]{0, 400, 200, 400});
+            nm.createNotificationChannel(ch);
+          }
+          android.app.Notification n = new android.app.Notification.Builder(MainActivity.this, "mesh-alert")
+            .setContentTitle(title).setContentText(text)
+            .setSmallIcon(android.R.drawable.stat_notify_error).setAutoCancel(true).build();
+          nm.notify(1, n);
+        } catch (Exception e) { }
+      });
+    }
   }
 }
